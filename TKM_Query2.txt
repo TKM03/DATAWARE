@@ -1,0 +1,81 @@
+
+-- DROP VIEW IF EXISTS CustomerPreferredProducts;
+
+SET LINESIZE 185;
+SET PAGESIZE 120;
+SET HEADING ON;
+
+ALTER SESSION SET NLS_DATE_FORMAT = 'DD-MON-YYYY';
+
+COLUMN CompanyName FORMAT A27 HEADING "CUSTOMER NAME"
+COLUMN Country FORMAT A10 HEADING "COUNTRY"
+COLUMN City FORMAT A15 HEADING "CITY"
+COLUMN TotalOrders FORMAT 999 HEADING "NUM OF ORDERS"
+COLUMN PreferredProduct FORMAT A35 HEADING "PREFERRED PRODUCT"
+COLUMN AverageOrderValue FORMAT $999,999.99 HEADING "AVERAGE ORDER VALUE"
+COLUMN LifeSpan FORMAT 9 HEADING "LIFE SPAN"
+COLUMN LifeYears FORMAT A50 HEADING "YEAR (Life SPAN)"
+
+TTITLE CENTER 'Customer Preferred Products Analysis' -
+       SKIP 1 -
+       CENTER 'from 2020 to 2024' -
+       RIGHT 'Date: ' _DATE -
+       SKIP 1 RIGHT 'Page ' -
+       FORMAT 999 SQL.PNO -
+       SKIP 2;
+
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---';
+
+WITH CustomerPreferredProducts AS (
+  SELECT
+    c.CompanyName,
+    c.Country,
+    c.City,
+    COUNT(o.OrderID) AS TotalOrders,
+    p.ProductName AS PreferredProduct,
+    AVG(o.TotalPrice) AS AverageOrderValue,
+    LISTAGG(
+      CASE
+        WHEN d.CalYear = 2020 THEN '2020'
+        WHEN d.CalYear = 2021 THEN '2021'
+        ELSE TO_CHAR(d.CalYear)
+      END, ', '
+    ) WITHIN GROUP (ORDER BY d.CalYear) AS LifeYears,
+    COUNT(DISTINCT d.CalYear) AS LifeSpan
+  FROM
+    Customer_dim c
+    JOIN order_FACTS o ON c.CustomerKey = o.CustomerKey
+    JOIN Product_dim p ON o.ProductKey = p.ProductKey
+    JOIN Date_dim d ON o.DateKey = d.DateKey
+  WHERE
+    d.CalYear BETWEEN 2020 AND 2024
+  GROUP BY
+    c.CompanyName, c.Country, c.City, p.ProductName
+)
+SELECT
+  CompanyName,
+  Country,
+  City,
+  TotalOrders,
+  PreferredProduct,
+  AverageOrderValue,
+  LifeSpan,
+  REGEXP_REPLACE(LifeYears, ', ([^,]+)(,\1)*', ', \1') AS LifeYears
+FROM (
+  SELECT
+    CompanyName,
+    Country,
+    City,
+    TotalOrders,
+    PreferredProduct,
+    AverageOrderValue,
+    LifeSpan,
+    LifeYears,
+    ROW_NUMBER() OVER (ORDER BY TotalOrders DESC) AS rn
+  FROM
+    CustomerPreferredProducts
+)
+WHERE rn <= 40
+ORDER BY
+  TotalOrders DESC;
+

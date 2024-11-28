@@ -1,0 +1,664 @@
+
+
+
+========================================================================
+drop table customer_dim;
+
+
+CREATE TABLE Customer_Dim (
+  CustomerKey       NUMBER 	 NOT NULL, 
+  CustomerID        NUMBER       NOT NULL,
+  ContactName       VARCHAR(30)  NOT NULL,
+  CompanyName       VARCHAR(50)  NOT NULL,
+  Country           VARCHAR(30)  NOT NULL,
+  City              VARCHAR(30)  NOT NULL,
+  PRIMARY KEY (CustomerKey)
+);
+
+
+drop table Employee_dim;
+
+CREATE TABLE Employee_dim (
+  EmployeeKey       NUMBER      NOT NULL,
+  EmployeeID        NUMBER      NOT NULL,
+  LastName          VARCHAR(20) NOT NULL,
+  FirstName         VARCHAR(10) NOT NULL,
+  HireDate          DATE        NOT NULL, -- 'YYYY-MM-DD'
+  City              VARCHAR(15) NOT NULL,
+  PostalCode        VARCHAR(10) NOT NULL,
+  Country           VARCHAR(15) NOT NULL,
+  PRIMARY KEY (EmployeeKey)
+);
+
+
+drop table product_dim;
+
+CREATE TABLE Product_dim (
+  ProductKey          NUMBER                  NOT NULL,
+  ProductID           NUMBER                  NOT NULL, 
+  ProductName         VARCHAR(40)             NOT NULL, 
+  SupplierID          NUMBER                  NOT NULL, 
+  CategoryID          NUMBER                  NOT NULL, 
+  QuantityPerUnit     VARCHAR(20)             NOT NULL, 
+  UnitPrice           NUMBER(6,2)  DEFAULT 0  NOT NULL, 
+  UnitsInStock        NUMBER       DEFAULT 0  NOT NULL, 
+  UnitsOnOrder        NUMBER       DEFAULT 0  NOT NULL, 
+  ReorderLevel        NUMBER       DEFAULT 0  NOT NULL, 
+  Discontinued        NUMBER(1)    DEFAULT 0  NOT NULL, -- 0=false, 1=true
+  EffectiveStartDate  DATE                    NOT NULL, -- 'YYYY-MM-DD'
+  EffectiveEndDate    DATE                    NOT NULL, -- 'YYYY-MM-DD'
+  IsCurrent           CHAR                    NOT NULL, -- 'Y'/'N'
+  PRIMARY KEY (ProductKey),
+  FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID),
+  FOREIGN KEY (SupplierID) REFERENCES Suppliers(SupplierID) 
+);
+
+
+drop table date_dim;
+
+CREATE TABLE Date_dim (
+  DateKey            NUMBER       NOT NULL,
+  CalenderDate       DATE         NOT NULL  UNIQUE,
+  FullDesc           VARCHAR(45)  NOT NULL, -- YEAR MONTH DAY
+  DayOfWeek          NUMBER(1)    NOT NULL, -- 1 to 7
+  DayNumberOfMonth   NUMBER(2)    NOT NULL, -- 1 to 36
+  DayNumberOfYear    NUMBER(3)    NOT NULL, -- 1 to 366
+  LastDayInMonthInd  CHAR(1)      NOT NULL, -- 'Y'/'N'
+  CalWeekEndDate     DATE         NOT NULL, -- date at the end of week
+  CalWeekInYear      NUMBER(2)    NOT NULL, -- 1 to 52
+  CalMonthName       VARCHAR(9)   NOT NULL, -- 'JANUARY'
+  CalMonthNoInYear   NUMBER(2)    NOT NULL, -- 1 to12
+  CalYearMonth       CHAR(7)      NOT NULL, -- 2022-03
+  Quarter            CHAR(2)      NOT NULL, -- 'Q1' 'Q3'
+  YearQuarter        CHAR(7)      NOT NULL, -- 2022-Q3
+  CalYear            NUMBER(4)    NOT NULL, -- 2022
+  Holiday            CHAR(1)      NOT NULL, -- 'Y'/'N'
+  Weekday            CHAR(1)      NOT NULL, -- 'Y'/'N'
+PRIMARY KEY(DateKey)
+);
+
+==================================================================
+
+drop sequence cus_dim_seq;
+
+create sequence cus_dim_seq
+start with 1
+increment by 1;
+
+insert into customer_dim
+select cus_dim_seq.nextval,
+       Cust_no,
+       upper(ContactName),
+       upper(Cust_Name),
+       upper(Country),
+       upper(City)
+from n_Cust;
+
+drop sequence employee_dim_seq;
+
+create sequence employee_dim_seq
+start with 1
+increment by 1;
+
+insert into employee_dim
+select employee_dim_seq.nextval,
+       employeeID,
+       upper(lastname),
+       upper(firstname),
+       hiredate,
+       City,
+       PostalCode,
+       Country
+from employees;
+
+drop sequence product_seq;
+
+create sequence product_seq
+start with 1
+increment by 1;
+
+insert into product_dim
+select product_seq.nextval,
+       productid,
+       productname,
+       SupplierID,
+       CategoryID,
+       QuantityPerUnit,
+       UnitPrice,
+       UnitsInStock,
+       UnitsOnOrder,
+       ReorderLevel,
+       Discontinued,
+       to_date('1994-01-01', 'YYYY-MM-DD') as EffectiveStartDate,
+       to_date('9999-12-31', 'YYYY-MM-DD') as EffectiveEndDate,
+       'Y' as iscurrent
+from products;
+
+===============================================================
+
+--customer dim--
+
+
+CREATE OR REPLACE PROCEDURE sub_load_customer_dim AS
+    v_max_customer_key NUMBER;
+BEGIN
+    -- Retrieve the maximum CustomerKey from customer_dim
+    SELECT NVL(MAX(CustomerKey), 0) INTO v_max_customer_key FROM customer_dim;
+
+    -- Insert new customer data from the customers source table
+    INSERT INTO customer_dim (
+        CustomerKey,
+        CustomerID,
+        ContactName,
+        CompanyName,
+        Country,
+        City
+    )
+    SELECT 
+        v_max_customer_key + ROWNUM, -- Ensuring unique CustomerKey
+        c.CustomerID,
+        UPPER(c.ContactName), -- Converting ContactName to uppercase
+        UPPER(c.CompanyName), -- Converting CompanyName to uppercase
+        UPPER(c.Country), -- Converting Country to uppercase
+        UPPER(c.City) -- Converting City to uppercase
+    FROM 
+        customers c
+    WHERE NOT EXISTS (
+        SELECT 1 FROM customer_dim cd WHERE cd.CustomerID = c.CustomerID
+    );
+END;
+/
+
+
+exec sub_load_customer_dim
+
+=========================================================================================
+
+--employee dimension--
+
+CREATE OR REPLACE PROCEDURE sub_load_employee_dim AS
+    v_max_employee_key NUMBER;
+BEGIN
+    -- Retrieve the maximum EmployeeKey from employee_dim
+    SELECT NVL(MAX(EmployeeKey), 0) INTO v_max_employee_key FROM employee_dim;
+
+    -- Insert new employee data from the employees source table
+    INSERT INTO employee_dim (
+        EmployeeKey,
+        EmployeeID,
+        LastName,
+        FirstName,
+        HireDate,
+        City,
+        PostalCode,
+        Country
+    )
+    SELECT 
+        v_max_employee_key + ROWNUM, -- Ensuring unique EmployeeKey
+        e.EmployeeID,
+        UPPER(e.LastName), -- Converting LastName to uppercase
+        UPPER(e.FirstName), -- Converting FirstName to uppercase
+        e.HireDate,
+        e.City,
+        e.PostalCode,
+        e.Country
+    FROM 
+        employees e
+    WHERE NOT EXISTS (
+        SELECT 1 FROM employee_dim ed WHERE ed.EmployeeID = e.EmployeeID
+    );
+END;
+/
+
+exec sub_load_employee_dim;
+
+=============================================================================
+
+--product dimension--
+
+CREATE OR REPLACE PROCEDURE sub_load_product_dim AS
+    v_max_product_key NUMBER;
+BEGIN
+    -- Retrieve the maximum ProductKey from product_dim
+    SELECT NVL(MAX(ProductKey), 0) INTO v_max_product_key FROM product_dim;
+
+    -- Insert new product data from the products source table with data scrubbing
+    INSERT INTO product_dim (
+        ProductKey,
+        ProductID,
+        ProductName,
+        SupplierID,
+        CategoryID,
+        QuantityPerUnit,
+        UnitPrice,
+        UnitsInStock,
+        UnitsOnOrder,
+        ReorderLevel,
+        Discontinued,
+        EffectiveStartDate,
+        EffectiveEndDate,
+        IsCurrent
+    )
+    SELECT 
+        v_max_product_key + rownum,
+        p.ProductID,
+        NVL(p.ProductName, 'No Name'), -- Scrubbing empty product names
+        COALESCE(p.SupplierID, -1), -- Using COALESCE for clarity, same as NVL
+        COALESCE(p.CategoryID, -1),
+        COALESCE(p.QuantityPerUnit, 'Not specified'),
+        GREATEST(p.UnitPrice, 0), -- Ensuring UnitPrice is non-negative
+        GREATEST(p.UnitsInStock, 0), -- Ensuring UnitsInStock is non-negative
+        GREATEST(p.UnitsOnOrder, 0), -- Ensuring UnitsOnOrder is non-negative
+        GREATEST(p.ReorderLevel, 0), -- Ensuring ReorderLevel is non-negative
+        COALESCE(p.Discontinued, 0), -- Default to 0 if null
+        TO_DATE('1994-01-01', 'YYYY-MM-DD'), -- Static effective start date
+        TO_DATE('9999-12-31', 'YYYY-MM-DD'), -- Static effective end date
+        'Y' -- Marking as current
+    FROM 
+        products p
+    WHERE NOT EXISTS (
+        SELECT 1 FROM product_dim pd WHERE pd.ProductID = p.ProductID
+    )
+    AND p.ProductID IS NOT NULL; -- Scrubbing entries without a ProductID
+END;
+/
+
+
+exec sub_load_product_dim
+
+select * from product_dim
+order by productkey;
+
+===================================================================
+
+--date dim--
+
+CREATE OR REPLACE PROCEDURE sub_load_date_dim AS
+   v_max_date            DATE;
+   v_max_datekey         NUMBER;
+
+   v_cal_date            DATE;
+   v_full_desc           VARCHAR(45);
+   v_day_of_week         NUMBER(1);
+   v_day_num_month       NUMBER(2);
+   v_day_num_year        NUMBER(3);
+   v_last_day_month_ind  CHAR(1);
+   v_cal_week_end_date   DATE;
+   v_cal_week_year       NUMBER(2);
+   v_cal_month_name      VARCHAR(9);
+   v_cal_month_number    NUMBER(2);
+   v_cal_year_month      CHAR(7);
+   v_cal_quarter         CHAR(2);
+   v_cal_year_quarter    CHAR(7);
+   v_cal_year            NUMBER(4);
+   v_holiday_ind         CHAR(1);
+   v_weekday_ind         CHAR(1);
+
+BEGIN
+   -- Find the latest date and datekey in the dimension table
+   SELECT MAX(CalenderDate), MAX(DateKey) INTO v_max_date, v_max_datekey FROM date_dim;
+   v_max_datekey := NVL(v_max_datekey, 0) + 1; -- Ensure non-null and increment
+   v_cal_date := NVL(v_max_date, TO_DATE('1990-01-01', 'YYYY-MM-DD')) + 1; -- Start day after the last loaded day or a default start date
+
+   WHILE v_cal_date <= SYSDATE LOOP
+      v_full_desc := TO_CHAR(v_cal_date, 'YYYY "Year" MM "Month" DD "Day"');
+      v_day_of_week := TO_CHAR(v_cal_date, 'D');
+      v_day_num_month := TO_CHAR(v_cal_date, 'DD');
+      v_day_num_year := TO_CHAR(v_cal_date, 'DDD');
+      v_cal_week_year := TO_CHAR(v_cal_date, 'IW');
+      v_cal_month_name := TO_CHAR(v_cal_date, 'MONTH');
+      v_cal_month_number := TO_CHAR(v_cal_date, 'MM');
+      v_cal_year := TO_CHAR(v_cal_date, 'YYYY');
+      v_last_day_month_ind := CASE WHEN v_cal_date = LAST_DAY(v_cal_date) THEN 'Y' ELSE 'N' END;
+      v_cal_week_end_date := NEXT_DAY(v_cal_date - 1, 'SUNDAY');
+      v_cal_year_month := TO_CHAR(v_cal_date, 'YYYY-MM');
+      
+      -- Determine the quarter
+      v_cal_quarter := CASE
+                          WHEN v_cal_month_number IN ('01', '02', '03') THEN 'Q1'
+                          WHEN v_cal_month_number IN ('04', '05', '06') THEN 'Q2'
+                          WHEN v_cal_month_number IN ('07', '08', '09') THEN 'Q3'
+                          WHEN v_cal_month_number IN ('10', '11', '12') THEN 'Q4'
+                       END;
+      v_cal_year_quarter := v_cal_year || '-' || v_cal_quarter;
+      v_holiday_ind := 'N'; -- Placeholder for actual holiday logic
+      v_weekday_ind := CASE WHEN v_day_of_week IN (2, 3, 4, 5, 6) THEN 'Y' ELSE 'N' END;
+
+      -- Insert a row into the dimension table
+      INSERT INTO Date_Dim (
+        DateKey,
+        CalenderDate,
+        FullDesc,
+        DayOfWeek,
+        DayNumberOfMonth,
+        DayNumberOfYear,
+        LastDayInMonthInd,
+        CalWeekEndDate,
+        CalWeekInYear,
+        CalMonthName,
+        CalMonthNoInYear,
+        CalYearMonth,
+        Quarter,
+        YearQuarter,
+        CalYear,
+        Holiday,
+        Weekday
+      ) VALUES (
+        v_max_datekey,
+        v_cal_date,
+        v_full_desc,
+        v_day_of_week,
+        v_day_num_month,
+        v_day_num_year,
+        v_last_day_month_ind,
+        v_cal_week_end_date,
+        v_cal_week_year,
+        v_cal_month_name,
+        v_cal_month_number,
+        v_cal_year_month,
+        v_cal_quarter,
+        v_cal_year_quarter,
+        v_cal_year,
+        v_holiday_ind,
+        v_weekday_ind
+      );
+
+      v_cal_date := v_cal_date + 1; -- Move to the next day
+      v_max_datekey := v_max_datekey + 1; -- Increment the key
+   END LOOP;
+END;
+/
+
+
+
+exec sub_load_date_dim
+
+
+=======================================================================
+
+DECLARE
+    v_year NUMBER;
+    v_percent_increase NUMBER;
+    v_max_product_key NUMBER;
+BEGIN
+    -- Fetch the maximum ProductKey from product_dim if it exists, otherwise start from 1
+    SELECT COALESCE(MAX(ProductKey), 0) INTO v_max_product_key FROM product_dim;
+
+    FOR rec IN (SELECT * FROM Products)
+    LOOP
+        v_year := 2015;
+        WHILE v_year <= 2024 LOOP
+            -- Calculate the percent increase
+            v_percent_increase := DBMS_RANDOM.VALUE(1, 6); -- Randomly select a value between 1 and 5
+
+            -- Before inserting the new record, update existing records for this product and year range
+            UPDATE product_dim
+            SET IsCurrent = 'N'
+            WHERE ProductID = rec.ProductID
+              AND EffectiveStartDate <= TO_DATE(v_year-1 || '-12-31', 'YYYY-MM-DD')
+              AND EffectiveEndDate >= TO_DATE(v_year-1 || '-01-01', 'YYYY-MM-DD')
+              AND IsCurrent = 'Y';
+
+            -- Insert the new record
+            INSERT INTO product_dim (
+                ProductKey,
+                ProductID,
+                ProductName,
+                SupplierID,
+                CategoryID,
+                QuantityPerUnit,
+                UnitPrice,
+                UnitsInStock,
+                UnitsOnOrder,
+                ReorderLevel,
+                Discontinued,
+                EffectiveStartDate,
+                EffectiveEndDate,
+                IsCurrent
+            )
+            VALUES (
+                v_max_product_key + 1,
+                rec.ProductID,
+                rec.ProductName,
+                rec.SupplierID,
+                rec.CategoryID,
+                rec.QuantityPerUnit,
+                rec.UnitPrice * (1 + (v_percent_increase / 100)), -- Adjusted UnitPrice
+                rec.UnitsInStock,
+                rec.UnitsOnOrder,
+                rec.ReorderLevel,
+                rec.Discontinued,
+                TO_DATE(v_year || '-01-01', 'YYYY-MM-DD'), -- Correct date format
+                TO_DATE(v_year || '-12-31', 'YYYY-MM-DD'), -- End date placeholder
+                'Y'
+            );
+
+            v_max_product_key := v_max_product_key + 1; -- Update the max key after insertion
+            v_year := v_year + 1; -- Increment the year for the next iteration
+        END LOOP;
+    END LOOP;
+
+    DBMS_OUTPUT.PUT_LINE('Unit prices updated and IsCurrent set successfully.');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END;
+/
+
+========================================================================
+
+drop procedure load_product_dim;
+drop trigger trg_products_change;
+
+-- SCD 2 Maintainance
+
+CREATE OR REPLACE PROCEDURE load_product_dim(
+    p_productid NUMBER,
+    p_productname VARCHAR2,
+    p_supplierid NUMBER,
+    p_categoryid NUMBER,
+    p_quantityperunit VARCHAR2,
+    p_unitprice NUMBER,
+    p_unitsinstock NUMBER,
+    p_unitsonorder NUMBER,
+    p_reorderlevel NUMBER,
+    p_discontinued NUMBER
+)
+IS
+    v_max_product_key NUMBER;
+    v_existing_product NUMBER;
+BEGIN
+    -- Get the maximum ProductKey from the product_dim table
+    SELECT NVL(MAX(ProductKey), 0) INTO v_max_product_key FROM product_dim;
+
+    -- Check if the product already exists in the product_dim table
+    SELECT COUNT(*)
+    INTO v_existing_product
+    FROM product_dim
+    WHERE ProductID = p_productid
+        AND IsCurrent = 'Y';
+
+    IF v_existing_product = 0 THEN
+        -- Insert new record into product_dim
+        INSERT INTO product_dim (
+            ProductKey,
+            ProductID,
+            ProductName,
+            SupplierID,
+            CategoryID,
+            QuantityPerUnit,
+            UnitPrice,
+            UnitsInStock,
+            UnitsOnOrder,
+            ReorderLevel,
+            Discontinued,
+            EffectiveStartDate,
+            EffectiveEndDate,
+            IsCurrent
+        )
+        VALUES (
+            v_max_product_key + 1,
+            p_productid,
+            p_productname,
+            p_supplierid,
+            p_categoryid,
+            p_quantityperunit,
+            p_unitprice,
+            p_unitsinstock,
+            p_unitsonorder,
+            p_reorderlevel,
+            p_discontinued,
+            SYSDATE,
+            TO_DATE('9999-12-31', 'YYYY-MM-DD'),
+            'Y'
+        );
+    ELSE
+        -- Update the existing record and insert a new one
+        UPDATE product_dim
+        SET EffectiveEndDate = SYSDATE - INTERVAL '1' SECOND,
+            IsCurrent = 'N'
+        WHERE ProductID = p_productid
+            AND IsCurrent = 'Y';
+
+        INSERT INTO product_dim (
+            ProductKey,
+            ProductID,
+            ProductName,
+            SupplierID,
+            CategoryID,
+            QuantityPerUnit,
+            UnitPrice,
+            UnitsInStock,
+            UnitsOnOrder,
+            ReorderLevel,
+            Discontinued,
+            EffectiveStartDate,
+            EffectiveEndDate,
+            IsCurrent
+        )
+        VALUES (
+            v_max_product_key + 1,
+            p_productid,
+            p_productname,
+            p_supplierid,
+            p_categoryid,
+            p_quantityperunit,
+            p_unitprice,
+            p_unitsinstock,
+            p_unitsonorder,
+            p_reorderlevel,
+            p_discontinued,
+            SYSDATE,
+            TO_DATE('9999-12-31', 'YYYY-MM-DD'),
+            'Y'
+        );
+    END IF;
+END;
+/
+
+
+=========================================================================
+
+-- trigger when the products table is updating then the product dim will update
+
+CREATE OR REPLACE TRIGGER trg_products_change
+AFTER INSERT OR UPDATE OR DELETE ON products
+FOR EACH ROW
+BEGIN
+    IF INSERTING OR UPDATING THEN
+        load_product_dim(
+            :NEW.ProductID,
+            :NEW.ProductName,
+            :NEW.SupplierID,
+            :NEW.CategoryID,
+            :NEW.QuantityPerUnit,
+            :NEW.UnitPrice,
+            :NEW.UnitsInStock,
+            :NEW.UnitsOnOrder,
+            :NEW.ReorderLevel,
+            CASE WHEN :NEW.Discontinued = 1 THEN 1 ELSE 0 END
+        );
+    ELSIF DELETING THEN
+        -- Update the existing record and set EffectiveEndDate and IsCurrent
+        UPDATE product_dim
+        SET EffectiveEndDate = SYSDATE,
+            DISCONTINUED = 1
+        WHERE ProductID = :OLD.ProductID
+            AND ISCURRENT = 'Y';
+    END IF;
+END;
+/
+
+
+=====================================================================
+
+
+INSERT INTO products (ProductID, ProductName, SupplierID, CategoryID, QuantityPerUnit, UnitPrice, UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued)
+VALUES (78, 'New Product', 1, 1, '10 boxes', 25.00, 100, 0, 10, 0);
+
+-- Update a product
+
+UPDATE products
+SET UnitPrice = 30.00, UnitsInStock = 200
+WHERE ProductID = 78;
+
+DELETE FROM products
+WHERE ProductID = 78;
+
+
+select * from product_dim
+order by productkey;
+
+
+========================================================================
+
+
+drop table order_FACTS;
+
+
+CREATE TABLE order_FACTS (
+    OrderID          NUMBER                 NOT NULL,
+    CustomerKey      NUMBER                 NOT NULL,
+    EmployeeKey      NUMBER                 NOT NULL,
+    DateKey          NUMBER                 NOT NULL,
+    ProductKey       NUMBER                 NOT NULL,
+    Quantity         NUMBER      DEFAULT 1  NOT NULL, -- 99999999
+    Discount         NUMBER(3,2) DEFAULT 0  NOT NULL,
+    TotalPrice       NUMBER(6,2) DEFAULT 0  NOT NULL,
+    Freight          NUMBER(6,2) DEFAULT 0  NOT NULL,
+    ShipperID        NUMBER                 NOT NULL,
+    PRIMARY KEY(OrderID, CustomerKey, EmployeeKey, DateKey, ProductKey),
+    FOREIGN KEY (EmployeeKey) REFERENCES Employee_dim(EmployeeKey),
+    FOREIGN KEY (CustomerKey) REFERENCES Customer_dim(CustomerKey),
+    FOREIGN KEY (ProductKey) REFERENCES Product_dim(ProductKey)
+);
+
+
+
+-- Insert data into order_FACTS from other tables
+INSERT INTO order_FACTS (OrderID, CustomerKey, EmployeeKey, DateKey, ProductKey, Quantity, Discount, TotalPrice, Freight, ShipperID)
+SELECT
+    o.OrderID,
+    c.CustomerKey,
+    e.EmployeeKey,
+    d.DateKey,
+    p.ProductKey,
+    od.Quantity,
+    od.Discount,
+    (p.UnitPrice * od.Quantity) - (p.UnitPrice * od.Quantity * od.Discount) AS TotalPrice, -- Calculating TotalPrice after discount
+    o.Freight,
+    o.ShipVia AS ShipperID
+FROM
+    n_orders o
+    JOIN n_Order_Details od ON o.OrderID = od.OrderID
+    JOIN Customer_dim c     ON o.Cust_no = c.CustomerID
+    JOIN n_cust        co   ON c.customerID = co.cust_no
+    JOIN Employees em       ON o.EmployeeID = em.EmployeeID
+    JOIN Employee_dim e     ON em.EmployeeID = e.EmployeeID
+    JOIN Products pr        ON od.ProductID = pr.ProductID
+    JOIN Product_dim p      ON pr.ProductID = p.ProductID
+    AND  o.orderdate between p.effectiveStartDate and p.effectiveEndDate
+    JOIN Date_dim d         ON o.OrderDate = d.CalenderDate;
+
+
+

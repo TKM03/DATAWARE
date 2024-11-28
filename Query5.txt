@@ -1,0 +1,64 @@
+SET LINESIZE 120
+SET PAGESIZE 120
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+-- User Input for Thresholds with default values
+ACCEPT v_days_threshold_min NUMBER DEFAULT 30 PROMPT 'Enter minimum threshold (days) for inactivity (default: 30) from today: '
+ACCEPT v_days_threshold_max NUMBER DEFAULT 90 PROMPT 'Enter maximum threshold (days) for inactivity (default: 90) from today: '
+ACCEPT v_use_orders_threshold CHAR DEFAULT 'Y' PROMPT 'Use orders threshold? (Y/N, default: Y): '
+ACCEPT v_orders_threshold NUMBER DEFAULT 5 PROMPT 'Enter threshold (number) for orders less than (default: 5)[if choose N please enter 0]: '
+ACCEPT v_use_spend_threshold CHAR DEFAULT 'Y' PROMPT 'Use spend threshold? (Y/N, default: Y): '
+ACCEPT v_spend_threshold NUMBER DEFAULT 1000 PROMPT 'Enter threshold (amount) for spend less than (default: 1000)[if choose N please enter 0]: '
+
+-- Customer Churn Analysis Report
+
+-- Title and Header Information
+TTITLE CENTER 'Customer Churn Analysis Report' SKIP 1 CENTER 'As of ' _DATE RIGHT 'Page: ' SQL.PNO SKIP 2
+
+-- Setting up formatting options
+COLUMN customer_id HEADING "Customer ID" FORMAT 99999
+COLUMN ContactName HEADING "Contact Name" FORMAT A15
+COLUMN total_orders HEADING "Total Orders" FORMAT 999  
+COLUMN last_order_date FORMAT A11 HEADING "Last Order Date"
+COLUMN total_spend FORMAT $999,999 HEADING "Total Spend|($)"
+COLUMN avg_order_value FORMAT $999,999.99 HEADING "Avg Order Value| ($)"
+COLUMN days_since_last_order FORMAT 9999 HEADING "Days Since|Last Order"
+COLUMN churn_risk_rank FORMAT 999999 HEADING "Churn Risk Rank"
+COLUMN churn_risk_quantile FORMAT 9999 HEADING "Churn Risk|Quantile"
+
+CREATE OR REPLACE VIEW CustomerChurnView AS
+SELECT 
+    c.CustomerID,
+    c.ContactName,
+    COUNT(*) AS total_orders,
+    MAX(d.CalenderDate) AS last_order_date,
+    SUM(o.TotalPrice) AS total_spend,
+    ROUND(SUM(o.TotalPrice) / COUNT(*), 2) AS avg_order_value,
+    TRUNC(SYSDATE - MAX(d.CalenderDate)) AS days_since_last_order,
+    RANK() OVER (ORDER BY TRUNC(SYSDATE - MAX(d.CalenderDate)) DESC) AS churn_risk_rank,
+    NTILE(4) OVER (ORDER BY SUM(o.TotalPrice)) AS churn_risk_quantile
+FROM 
+    order_FACTS o
+JOIN 
+    Customer_dim c ON o.CustomerKey = c.CustomerKey
+JOIN 
+    Date_dim d ON o.DateKey = d.DateKey
+GROUP BY 
+    c.CustomerID, c.ContactName
+HAVING
+    TRUNC(SYSDATE - MAX(d.CalenderDate)) BETWEEN NVL(&v_days_threshold_min, 30) AND NVL(&v_days_threshold_max, 90) AND
+    (
+        (NVL('&v_use_orders_threshold', 'Y') = 'N' OR COUNT(*) < NVL(&v_orders_threshold, 5)) AND
+        (NVL('&v_use_spend_threshold', 'Y') = 'N' OR SUM(o.TotalPrice) < NVL(&v_spend_threshold, 1000))
+    );
+
+-- Querying the view
+SELECT *
+FROM CustomerChurnView
+ORDER BY churn_risk_rank;
+
+-- Clearing Formatting
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF

@@ -1,0 +1,69 @@
+SET SERVEROUTPUT ON
+SET FEEDBACK OFF
+SET LINESIZE 120
+SET PAGESIZE 50
+
+ACCEPT v_year NUMBER PROMPT 'Enter year (YYYY): '
+ACCEPT v_quarter CHAR PROMPT 'Enter quarter (Q1, Q2, Q3, or Q4): '
+
+COLUMN country FORMAT A20 HEADING "Country"
+COLUMN city FORMAT A15 HEADING "City"
+COLUMN product_name FORMAT A30 HEADING "Product"
+COLUMN unit_price FORMAT $999,990.99 HEADING "Unit Price"
+COLUMN rank FORMAT 999 HEADING "Rank"
+COLUMN total_sales FORMAT $999,999,990.99 HEADING "Total Sales| ($)"
+COLUMN order_count FORMAT 999,999 HEADING "Number of|Orders"
+COLUMN quantity FORMAT 999,999 HEADING "Quantity of|Product"
+COLUMN avg_order_value FORMAT $999,990.99 HEADING "Avg. |Order Value"
+
+TTITLE CENTER 'Top 3 Best-Selling Products by Location (Quarter / Year)' SKIP 1 -
+SKIP 1 -
+CENTER v_quarter'/'v_year -
+RIGHT 'Date: ' _DATE -
+SKIP 1 RIGHT 'Page ' -
+FORMAT 999 SQL.PNO -
+SKIP 2
+
+BREAK ON country SKIP 2 ON city SKIP 1 ON report
+COMPUTE SUM OF total_sales ON country
+
+SELECT
+    country,
+    city,
+    product_name,
+    unit_price,
+    rank,
+    total_sales,
+    order_count,
+    quantity,
+    avg_order_value
+FROM (
+    SELECT
+        c.Country AS country,
+        c.City AS city,
+        p.ProductName AS product_name,
+        ROUND(AVG(p.UnitPrice), 2) AS unit_price,
+        RANK() OVER (PARTITION BY c.Country, c.City ORDER BY SUM(o.TotalPrice) DESC) AS rank,
+        SUM(o.TotalPrice) AS total_sales,
+        COUNT(*) AS order_count,
+        SUM(o.Quantity) AS quantity,
+        ROUND(AVG(o.TotalPrice), 2) AS avg_order_value
+    FROM
+        order_FACTS o
+    JOIN Customer_dim c ON o.CustomerKey = c.CustomerKey
+    JOIN Product_dim p ON o.ProductKey = p.ProductKey
+    JOIN Date_dim d ON o.DateKey = d.DateKey
+    WHERE
+        d.CalYear = &&v_year
+        AND d.Quarter = UPPER('&&v_quarter')
+    GROUP BY
+        c.Country, c.City, p.ProductName
+)
+WHERE rank <= 3
+ORDER BY country, city, rank;
+
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'

@@ -1,0 +1,95 @@
+SET LINESIZE 125
+SET PAGESIZE 102
+SET NEWPAGE 1
+SET HEADING ON
+
+ALTER SESSION SET NLS_DATE_FORMAT = 'DD-MON-YYYY';
+
+VARIABLE year  VARCHAR2(4);
+VARIABLE month VARCHAR2(2);
+
+PROMPT 'Please enter the year (YYYY):'
+EXEC :year := '&year';
+PROMPT 'Please enter the month (MM):'
+EXEC :month := '&month';
+
+COLUMN "Year-Month" FORMAT A15 HEADING "YEAR-MONTH"
+COLUMN "Customer Name" FORMAT A30 HEADING "CUSTOMER NAME"
+COLUMN "Total Sales" FORMAT A20 HEADING "CURRENT MONTH SALES"
+COLUMN "Previous Month Sales" FORMAT A20 HEADING "PREVIOUS MONTH SALES"
+COLUMN "Month-over-Month Growth" FORMAT A20 HEADING "MONTHLY GROWTH"
+COLUMN "Contribution" FORMAT A15 HEADING "CONTRIBUTION"
+
+TTITLE -
+CENTER 'Customer Sales and Growth Analysis For &year-&month' -
+SKIP 1 -
+RIGHT 'Date: ' _DATE -
+SKIP 1 -
+RIGHT 'Page ' SQL.PNO -
+SKIP 2
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+WITH SalesData AS (
+    SELECT
+        TO_CHAR(dd.CalenderDate, 'YYYY-MM') AS "Year-Month",
+        c.CompanyName AS "Customer Name",
+        SUM(f.TotalPrice) AS Monthly_Sales
+    FROM
+        order_FACTS f
+        JOIN Date_dim dd ON f.DateKey = dd.DateKey
+        JOIN Customer_dim c ON f.CustomerKey = c.CustomerKey
+    WHERE
+        TO_CHAR(dd.CalenderDate, 'YYYY-MM') IN (
+            :year || '-' || :month,
+            TO_CHAR(ADD_MONTHS(TO_DATE(:year || :month, 'YYYYMM'), -1), 'YYYY-MM')
+        )
+    GROUP BY
+        TO_CHAR(dd.CalenderDate, 'YYYY-MM'),
+        c.CompanyName
+),
+CurrentMonth AS (
+    SELECT
+        "Year-Month",
+        "Customer Name",
+        Monthly_Sales
+    FROM
+        SalesData
+    WHERE
+        "Year-Month" = :year || '-' || :month
+),
+PreviousMonth AS (
+    SELECT
+        "Year-Month",
+        "Customer Name",
+        Monthly_Sales
+    FROM
+        SalesData
+    WHERE
+        "Year-Month" = TO_CHAR(ADD_MONTHS(TO_DATE(:year || :month, 'YYYYMM'), -1), 'YYYY-MM')
+),
+TotalCurrentMonthSales AS (
+    SELECT
+        SUM(Monthly_Sales) AS Total_Sales
+    FROM
+        CurrentMonth
+)
+SELECT
+    c."Year-Month" AS "Year-Month",
+    c."Customer Name" AS "Customer Name",
+    TO_CHAR(c.Monthly_Sales, '$999,999,999.99') AS "Total Sales",
+    TO_CHAR(p.Monthly_Sales, '$999,999,999.99') AS "Previous Month Sales",
+    TO_CHAR((c.Monthly_Sales - p.Monthly_Sales) / p.Monthly_Sales * 100, '9990.99') || '%' AS "Month-over-Month Growth",
+    TO_CHAR(c.Monthly_Sales / t.Total_Sales * 100, '9990.99') || '%' AS "Contribution"
+FROM
+    CurrentMonth c
+    JOIN PreviousMonth p ON c."Customer Name" = p."Customer Name",
+    TotalCurrentMonthSales t
+WHERE
+    p.Monthly_Sales IS NOT NULL
+ORDER BY
+    "Customer Name";
+
+SET PAGESIZE 14
+SET LINESIZE 80
+SET NEWPAGE 1
+SET HEADING OFF

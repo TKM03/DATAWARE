@@ -1,0 +1,81 @@
+
+drop table customer_dim;
+
+
+CREATE TABLE Customer_dim (
+  CustomerKey       NUMBER 	 NOT NULL, 
+  CustomerID        NUMBER       NOT NULL,
+  ContactName       VARCHAR(30)  NOT NULL,
+  CompanyName       VARCHAR(50)  NOT NULL,
+  Country           VARCHAR(30)  NOT NULL,
+  City              VARCHAR(30)  NOT NULL,
+  PRIMARY KEY (CustomerKey)
+);
+
+
+drop table Employee_dim;
+
+CREATE TABLE Employee_dim (
+  EmployeeKey       NUMBER      NOT NULL,
+  EmployeeID        NUMBER      NOT NULL,
+  LastName          VARCHAR(20) NOT NULL,
+  FirstName         VARCHAR(10) NOT NULL,
+  HireDate          DATE        NOT NULL, -- 'YYYY-MM-DD'
+  City              VARCHAR(15) NOT NULL,
+  PostalCode        VARCHAR(10) NOT NULL,
+  Country           VARCHAR(15) NOT NULL,
+  PRIMARY KEY (EmployeeKey)
+);
+
+
+drop table product_dim;
+
+CREATE TABLE Product_dim (
+  ProductKey          NUMBER                  NOT NULL,
+  ProductID           NUMBER                  NOT NULL, 
+  ProductName         VARCHAR(40)             NOT NULL, 
+  SupplierID          NUMBER                  NOT NULL, 
+  CategoryID          NUMBER                  NOT NULL, 
+  QuantityPerUnit     VARCHAR(20)             NOT NULL, 
+  UnitPrice           NUMBER(6,2)  DEFAULT 0  NOT NULL, 
+  UnitsInStock        NUMBER       DEFAULT 0  NOT NULL, 
+  UnitsOnOrder        NUMBER       DEFAULT 0  NOT NULL, 
+  ReorderLevel        NUMBER       DEFAULT 0  NOT NULL, 
+  Discontinued        NUMBER(1)    DEFAULT 0  NOT NULL, -- 0=false, 1=true
+  EffectiveStartDate  DATE                    NOT NULL, -- 'YYYY-MM-DD'
+  EffectiveEndDate    DATE                    NOT NULL, -- 'YYYY-MM-DD'
+  IsCurrent           CHAR                    NOT NULL, -- 'Y'/'N'
+  PRIMARY KEY (ProductKey),
+  FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID),
+  FOREIGN KEY (SupplierID) REFERENCES Suppliers(SupplierID) 
+);
+
+
+drop table date_dim;
+
+CREATE TABLE Date_dim (
+  DateKey            NUMBER       NOT NULL,
+  CalenderDate       DATE         NOT NULL  UNIQUE,
+  FullDesc           VARCHAR(45)  NOT NULL, -- YEAR MONTH DAY
+  DayOfWeek          NUMBER(1)    NOT NULL, -- 1 to 7
+  DayNumberOfMonth   NUMBER(2)    NOT NULL, -- 1 to 36
+  DayNumberOfYear    NUMBER(3)    NOT NULL, -- 1 to 366
+  LastDayInMonthInd  CHAR(1)      NOT NULL, -- 'Y'/'N'
+  CalWeekEndDate     DATE         NOT NULL, -- date at the end of week
+  CalWeekInYear      NUMBER(2)    NOT NULL, -- 1 to 52
+  CalMonthName       VARCHAR(9)   NOT NULL, -- 'JANUARY'
+  CalMonthNoInYear   NUMBER(2)    NOT NULL, -- 1 to12
+  CalYearMonth       CHAR(7)      NOT NULL, -- 2022-03
+  Quarter            CHAR(2)      NOT NULL, -- 'Q1' 'Q3'
+  YearQuarter        CHAR(7)      NOT NULL, -- 2022-Q3
+  CalYear            NUMBER(4)    NOT NULL, -- 2022
+  Holiday            CHAR(1)      NOT NULL, -- 'Y'/'N'
+  Weekday            CHAR(1)      NOT NULL, -- 'Y'/'N'
+PRIMARY KEY(DateKey)
+);
+
+
+
+
+
+

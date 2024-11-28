@@ -1,0 +1,46 @@
+
+drop table order_FACTS;
+
+
+CREATE TABLE order_FACTS (
+    OrderID          NUMBER                 NOT NULL,
+    CustomerKey      NUMBER                 NOT NULL,
+    EmployeeKey      NUMBER                 NOT NULL,
+    DateKey          NUMBER                 NOT NULL,
+    ProductKey       NUMBER                 NOT NULL,
+    Quantity         NUMBER      DEFAULT 1  NOT NULL, -- 99999999
+    Discount         NUMBER(3,2) DEFAULT 0  NOT NULL,
+    TotalPrice       NUMBER(6,2) DEFAULT 0  NOT NULL,
+    Freight          NUMBER(6,2) DEFAULT 0  NOT NULL,
+    ShipperID        NUMBER                 NOT NULL,
+    PRIMARY KEY(OrderID, CustomerKey, EmployeeKey, DateKey, ProductKey),
+    FOREIGN KEY (EmployeeKey) REFERENCES Employee_dim(EmployeeKey),
+    FOREIGN KEY (CustomerKey) REFERENCES Customer_dim(CustomerKey),
+    FOREIGN KEY (ProductKey) REFERENCES Product_dim(ProductKey)
+);
+
+
+
+-- Insert data into order_FACTS from other tables
+INSERT INTO order_FACTS (OrderID, CustomerKey, EmployeeKey, DateKey, ProductKey, Quantity, Discount, TotalPrice, Freight, ShipperID)
+SELECT
+    o.OrderID,
+    c.CustomerKey,
+    e.EmployeeKey,
+    d.DateKey,
+    p.ProductKey,
+    od.Quantity,
+    od.Discount,
+    (p.UnitPrice * od.Quantity) - (p.UnitPrice * od.Quantity * od.Discount) AS TotalPrice, -- Calculating TotalPrice after discount
+    o.Freight,
+    o.ShipVia AS ShipperID
+FROM
+    n_orders o
+    JOIN n_Order_Details od ON o.OrderID = od.OrderID
+    JOIN Customer_dim c     ON o.Cust_no = c.CustomerID
+    JOIN Employees em       ON o.EmployeeID = em.EmployeeID
+    JOIN Employee_dim e     ON em.EmployeeID = e.EmployeeID
+    JOIN Products pr        ON od.ProductID = pr.ProductID
+    JOIN Product_dim p      ON pr.ProductID = p.ProductID
+    AND  o.orderdate between p.effectiveStartDate and p.effectiveEndDate
+    JOIN Date_dim d         ON o.OrderDate = d.CalenderDate;

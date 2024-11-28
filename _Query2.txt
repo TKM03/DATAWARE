@@ -1,0 +1,94 @@
+-- Set up formatting options
+SET linesize 190
+SET pagesize 190
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+REPFOOTER OFF
+
+-- Reading user input for year
+-- Options of year
+SELECT DISTINCT CALYEAR AS Year
+FROM Date_dim
+ORDER BY Year;
+ACCEPT Input_Year NUMBER PROMPT 'Enter the year (2015-2024): ' 
+
+-- Setting up formatting options
+COLUMN ProductID       FORMAT 9999                 HEADING "Product ID"
+COLUMN ProductName     FORMAT A10                  HEADING "Product Name"
+COLUMN Category        FORMAT 999                  HEADING "Category ID"
+COLUMN TotalRevenue    FORMAT $999,999,990.99      HEADING "Total Revenue($)"
+COLUMN Discounts       FORMAT $999,999,990.99      HEADING "Discounts ($)"
+COLUMN ShippingCost    FORMAT $990.99     	   HEADING "Shipping Cost"
+COLUMN Quantity        FORMAT 999,999              HEADING "Quantity"
+
+TTITLE -
+CENTER 'Product Popularity Analysis Report for the Year' -
+SKIP 1 -
+CENTER ' &Input_Year' -
+RIGHT 'Date: ' _DATE -
+SKIP 1 RIGHT 'Page ' -
+FORMAT 999 SQL.PNO -
+SKIP 2
+
+-- Analyse product sales performance 
+SELECT
+    p.ProductID AS "Product ID",
+    p.PRODUCTNAME AS "Product Name",
+    p.CATEGORYID AS "Category ID",
+    SUM(o.TOTALPRICE) AS "Total Revenue($)",
+    SUM(o.Discount) AS "Discounts",
+    SUM(o.Freight) AS "Shipping Cost($)",
+    SUM(o.QUANTITY) AS "Quantity"
+FROM
+    product_dim p
+JOIN
+    order_FACTS o ON p.PRODUCTKEY = o.PRODUCTKEY
+JOIN
+    Date_dim d ON o.DATEKEY = d.DATEKEY
+WHERE
+    d.CALYEAR = &Input_Year
+GROUP BY
+    p.ProductID, p.PRODUCTNAME, p.CATEGORYID
+ORDER BY
+    p.ProductID;
+
+-- Find product with highest total sales
+SELECT
+    p.ProductID AS "Product ID",
+    p.PRODUCTNAME AS "Product Name",
+    SUM(o.TOTALPRICE) AS "Total Sales",
+    COUNT(*) AS "Total Orders"
+FROM
+    product_dim p
+JOIN
+    order_FACTS o ON p.PRODUCTKEY = o.PRODUCTKEY
+JOIN
+    Date_dim d ON o.DATEKEY = d.DATEKEY
+WHERE
+    d.CALYEAR = &Input_Year
+GROUP BY
+    p.ProductID, p.PRODUCTNAME
+ORDER BY
+    SUM(o.TOTALPRICE) DESC;
+
+-- Show product with the highest total orders
+SELECT * FROM (
+    SELECT
+        p.ProductID AS "Product ID",
+        p.PRODUCTNAME AS "Product Name",
+        COUNT(*) AS "Total Orders"
+    FROM
+        product_dim p
+    JOIN
+        order_FACTS o ON p.PRODUCTKEY = o.PRODUCTKEY
+    JOIN
+        Date_dim d ON o.DATEKEY = d.DATEKEY
+    WHERE
+        d.CALYEAR = &Input_Year
+    GROUP BY
+        p.ProductID, p.PRODUCTNAME
+    ORDER BY
+        COUNT(*) DESC
+)WHERE ROWNUM = 1;
+
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'

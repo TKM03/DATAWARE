@@ -1,0 +1,161 @@
+drop procedure load_product_dim;
+drop trigger trg_products_change;
+
+-- SCD 2 Maintainance
+
+CREATE OR REPLACE PROCEDURE load_product_dim(
+    p_productid NUMBER,
+    p_productname VARCHAR2,
+    p_supplierid NUMBER,
+    p_categoryid NUMBER,
+    p_quantityperunit VARCHAR2,
+    p_unitprice NUMBER,
+    p_unitsinstock NUMBER,
+    p_unitsonorder NUMBER,
+    p_reorderlevel NUMBER,
+    p_discontinued NUMBER
+)
+IS
+    v_max_product_key NUMBER;
+    v_existing_product NUMBER;
+BEGIN
+    -- Get the maximum ProductKey from the product_dim table
+    SELECT NVL(MAX(ProductKey), 0) INTO v_max_product_key FROM product_dim;
+
+    -- Check if the product already exists in the product_dim table
+    SELECT COUNT(*)
+    INTO v_existing_product
+    FROM product_dim
+    WHERE ProductID = p_productid
+        AND IsCurrent = 'Y';
+
+    IF v_existing_product = 0 THEN
+        -- Insert new record into product_dim
+        INSERT INTO product_dim (
+            ProductKey,
+            ProductID,
+            ProductName,
+            SupplierID,
+            CategoryID,
+            QuantityPerUnit,
+            UnitPrice,
+            UnitsInStock,
+            UnitsOnOrder,
+            ReorderLevel,
+            Discontinued,
+            EffectiveStartDate,
+            EffectiveEndDate,
+            IsCurrent
+        )
+        VALUES (
+            v_max_product_key + 1,
+            p_productid,
+            p_productname,
+            p_supplierid,
+            p_categoryid,
+            p_quantityperunit,
+            p_unitprice,
+            p_unitsinstock,
+            p_unitsonorder,
+            p_reorderlevel,
+            p_discontinued,
+            SYSDATE,
+            TO_DATE('9999-12-31', 'YYYY-MM-DD'),
+            'Y'
+        );
+    ELSE
+        -- Update the existing record and insert a new one
+        UPDATE product_dim
+        SET EffectiveEndDate = SYSDATE - INTERVAL '1' SECOND,
+            IsCurrent = 'N'
+        WHERE ProductID = p_productid
+            AND IsCurrent = 'Y';
+
+        INSERT INTO product_dim (
+            ProductKey,
+            ProductID,
+            ProductName,
+            SupplierID,
+            CategoryID,
+            QuantityPerUnit,
+            UnitPrice,
+            UnitsInStock,
+            UnitsOnOrder,
+            ReorderLevel,
+            Discontinued,
+            EffectiveStartDate,
+            EffectiveEndDate,
+            IsCurrent
+        )
+        VALUES (
+            v_max_product_key + 1,
+            p_productid,
+            p_productname,
+            p_supplierid,
+            p_categoryid,
+            p_quantityperunit,
+            p_unitprice,
+            p_unitsinstock,
+            p_unitsonorder,
+            p_reorderlevel,
+            p_discontinued,
+            SYSDATE,
+            TO_DATE('9999-12-31', 'YYYY-MM-DD'),
+            'Y'
+        );
+    END IF;
+END;
+/
+
+
+=========================================================================
+
+-- trigger when the products table is updating then the product dim will update
+
+CREATE OR REPLACE TRIGGER trg_products_change
+AFTER INSERT OR UPDATE OR DELETE ON products
+FOR EACH ROW
+BEGIN
+    IF INSERTING OR UPDATING THEN
+        load_product_dim(
+            :NEW.ProductID,
+            :NEW.ProductName,
+            :NEW.SupplierID,
+            :NEW.CategoryID,
+            :NEW.QuantityPerUnit,
+            :NEW.UnitPrice,
+            :NEW.UnitsInStock,
+            :NEW.UnitsOnOrder,
+            :NEW.ReorderLevel,
+            CASE WHEN :NEW.Discontinued = 1 THEN 1 ELSE 0 END
+        );
+    ELSIF DELETING THEN
+        -- Update the existing record and set EffectiveEndDate and IsCurrent
+        UPDATE product_dim
+        SET EffectiveEndDate = SYSDATE,
+            DISCONTINUED = 1
+        WHERE ProductID = :OLD.ProductID
+            AND ISCURRENT = 'Y';
+    END IF;
+END;
+/
+
+
+=====================================================================
+
+
+INSERT INTO products (ProductID, ProductName, SupplierID, CategoryID, QuantityPerUnit, UnitPrice, UnitsInStock, UnitsOnOrder, ReorderLevel, Discontinued)
+VALUES (78, 'New Product', 1, 1, '10 boxes', 25.00, 100, 0, 10, 0);
+
+-- Update a product
+
+UPDATE products
+SET UnitPrice = 30.00, UnitsInStock = 200
+WHERE ProductID = 78;
+
+DELETE FROM products
+WHERE ProductID = 78;
+
+
+select * from product_dim
+order by productkey;

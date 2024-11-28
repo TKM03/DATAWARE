@@ -1,0 +1,61 @@
+SET LINESIZE 100
+SET PAGESIZE 120
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+REPFOOTER OFF
+
+-- Reading user input for year
+-- Options of year
+SELECT DISTINCT CALYEAR AS Year
+FROM Date_dim
+ORDER BY Year;
+ACCEPT Input_Year NUMBER PROMPT 'Enter the year (2015-2024): '
+
+-- Setting up formatting options
+COLUMN EmployeeID      FORMAT 9999               HEADING "Employee ID"
+COLUMN EmployeeName    FORMAT A10                HEADING "Employee Name"
+COLUMN TotalSales      FORMAT $999,999,990.99    HEADING "Total Sales ($)"
+COLUMN TotalOrders     FORMAT 999,999            HEADING "Total Orders"
+COLUMN AvgOrderValue   FORMAT $999,999,990.99    HEADING "Average Order Value"
+COLUMN Rank            FORMAT 99                 HEADING "Rank"
+
+TTITLE -
+CENTER 'The Sales and Orders For Employee' -
+SKIP 1 -
+CENTER '&Input_Year' -
+RIGHT 'Date: ' _DATE -
+SKIP 1 RIGHT 'Page ' -
+FORMAT 999 SQL.PNO -
+SKIP 2
+
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+-- Retrieving and presenting employee performance data for the specified year
+CREATE OR REPLACE VIEW EmployeeSales AS 
+SELECT
+    e.EmployeeID AS "Employee ID",
+    e.FirstName ||' '|| e.LastName AS "Employee Name",
+    SUM(o.TotalPrice) AS "Total Sales ($)",
+    COUNT(*) AS "Total Orders",
+    ROUND(SUM(o.TotalPrice) / COUNT(*), 2) AS "Average Order Value",
+    RANK() OVER (ORDER BY ROUND(SUM(o.TotalPrice) / COUNT(*), 2) DESC) AS "Rank"
+FROM
+    order_FACTS o
+JOIN 
+    Employee_dim e ON o.EmployeeKey = e.EmployeeKey
+JOIN 
+    Date_dim d ON o.DateKey = d.DateKey
+WHERE
+    d.CALYEAR = &Input_Year
+GROUP BY
+    e.EmployeeID, e.FirstName, e.LastName
+ORDER BY
+    "Rank";
+
+-- Displaying the result
+SELECT * FROM EmployeeSales;
+
+-- Clearing the formatting options
+CLEAR COLUMNS
+CLEAR BREAKS
+TTITLE OFF

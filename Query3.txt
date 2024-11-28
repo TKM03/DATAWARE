@@ -1,0 +1,82 @@
+set linesize 144;
+set pagesize 200;
+
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+ACCEPT Input CHAR PROMPT 'Enter the Country: ' FORMAT A30
+
+COLUMN Country                FORMAT A20                  HEADING "Country";
+COLUMN CustomerID             FORMAT 999999               HEADING "Customer ID";
+COLUMN CompanyName            FORMAT A30                  HEADING "Company Name";
+COLUMN TotalPrice2022         FORMAT $999,990.99          HEADING "2022";
+COLUMN TotalPrice2023         FORMAT $999,990.99          HEADING "2023";
+COLUMN TotalPrice             FORMAT $999,999,999.99      HEADING "Total Order";
+COLUMN PercentageOfTotalSales FORMAT 990.99               HEADING "Contribution of Total Order (%)";
+TTITLE - CENTER 'Top 10 Customer Order From ' &Input -
+SKIP 1 -
+CENTER 'From 2022 To 2023'-
+SKIP 1 -
+RIGHT 'DATE: ' _DATE -
+SKIP 1 -
+RIGHT 'Page ' FORMAT 999 SQL.PNO -
+SKIP 2
+BREAK ON Country SKIP 1
+COMPUTE SUM LABEL 'Total' OF TotalPrice ON Country
+COMPUTE SUM OF PercentageOfTotalSales ON Country
+COMPUTE SUM OF TotalPrice2022 ON Country
+COMPUTE SUM OF TotalPrice2023 ON Country
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+
+CREATE OR REPLACE VIEW TopfromCountry AS
+SELECT 
+    Country,
+    CustomerID,
+    CompanyName,
+    TotalPrice2022,
+    TotalPrice2023,
+    TotalPrice,
+    RANK() OVER (PARTITION BY Country ORDER BY TotalPrice DESC) AS Ranking,
+    ROUND((TotalPrice / SUM(TotalPrice) OVER (PARTITION BY country)) * 100, 2) AS PercentageOfTotalSales
+FROM (
+    SELECT 
+        c.Country as country,
+        o.CustomerKey,
+        c.CustomerID as customerid,
+        c.CompanyName as companyname,
+        SUM(o.TotalPrice) AS TotalPrice,
+        SUM(CASE WHEN d.calYear = 2022 THEN o.TotalPrice ELSE 0 END) AS TotalPrice2022,
+        SUM(CASE WHEN d.calYear = 2023 THEN o.TotalPrice ELSE 0 END) AS TotalPrice2023
+    FROM 
+        order_FACTS o
+    JOIN 
+        Customer_Dim c ON o.CustomerKey = c.CustomerKey
+    JOIN
+        date_dim d ON o.DateKey = d.DateKey
+    WHERE
+        d.calYear between 2022 and 2023
+    GROUP BY 
+        c.Country, o.CustomerKey, c.CustomerID, c.ContactName, c.CompanyName
+) ;
+
+CREATE OR REPLACE VIEW top10 AS
+Select
+    Country as Country,
+    CustomerID as CustomerID,
+    CompanyName as CompanyName,
+    TotalPrice2022 as TotalPrice2022,
+    TotalPrice2023 as TotalPrice2023,
+    TotalPrice as TotalPrice,
+    PercentageOfTotalSales as PercentageOfTotalSales
+FROM 
+    TopfromCountry
+WHERE 
+    Ranking <= 10
+AND
+    Country = '&Input';
+
+Select * from top10;
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF

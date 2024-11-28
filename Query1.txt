@@ -1,0 +1,55 @@
+-- total sale of each year and increase in percentage
+set linesize 117;
+set pagesize 110;
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+COLUMN Year                     FORMAT 9999        HEADING "Year";
+COLUMN TotalSalesForAllProducts FORMAT $999,999.99 HEADING "Total Sales ('000)";
+COLUMN NoOfOrder                FORMAT 999,999     HEADING "No. of Order";
+COLUMN Avgtotalsales            FORMAT $999,999.99 HEADING "Avg. Total Sales"
+COLUMN RANKING                  FORMAT 999999999   HEADING "Rank";
+COLUMN SalesChanges             FORMAT $999,999.99 HEADING "Sales Difference ('000)";
+COLUMN IncreasePercentage       FORMAT 00.99       HEADING "Changes Percentage (%)";
+
+TTITLE - CENTER 'Yearly Sales Comparison' -
+SKIP 1 -
+CENTER 'From 2015 To 2024'-
+SKIP 1 -
+RIGHT 'DATE: ' _DATE -
+SKIP 1 -
+RIGHT 'Page ' FORMAT 999 SQL.PNO -
+SKIP 2
+BREAK ON REPORT
+COMPUTE SUM LABEL 'Total' OF TotalSalesForAllProducts ON REPORT;
+COMPUTE SUM OF SalesChanges ON REPORT;
+COMPUTE SUM OF NoOfOrder ON REPORT;
+COMPUTE SUM OF Avgtotalsales ON REPORT;
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+CREATE OR REPLACE VIEW yearlysales AS 
+    SELECT
+        d.CalYear as year,
+        SUM(f.TotalPrice)/1000                             AS TotalSalesForAllProducts,
+        COUNT(DISTINCT f.OrderID)                          AS NoOfOrder,
+        SUM(f.TotalPrice)/COUNT(DISTINCT f.OrderID)        AS Avgtotalsales,
+        RANK() OVER (ORDER BY SUM(f.TotalPrice) DESC)      AS Ranking,
+        (SUM(f.TotalPrice) - LAG(SUM(f.TotalPrice), 1) OVER (ORDER BY d.calYear)) /1000  
+                                                           AS SalesChanges,
+        (SUM(f.TotalPrice) - LAG(SUM(f.TotalPrice), 1) OVER (ORDER BY d.calYear)) / LAG(SUM(f.TotalPrice), 1) OVER (ORDER BY d.calYear) * 100 
+                                                           AS IncreasePercentage
+    FROM
+        order_facts f
+    JOIN
+        date_dim d ON f.DateKey = d.DateKey
+    GROUP BY
+        d.calyear
+    ORDER BY
+        d.calyear;
+
+
+
+Select * from yearlysales;
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF

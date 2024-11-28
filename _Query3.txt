@@ -1,0 +1,90 @@
+-- Set up formatting options
+SET linesize 150
+SET pagesize 150
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+REPFOOTER OFF
+
+-- Reading user input for year
+-- Options of year
+SELECT DISTINCT CALYEAR AS Year
+FROM Date_dim
+ORDER BY Year;
+ACCEPT Input_Year NUMBER PROMPT 'Enter the year (2015-2024): ' 
+
+-- Setting up formatting options
+COLUMN SHIPPERID       FORMAT 99		  HEADING "Shipper ID"
+COLUMN ProductID       FORMAT 9999                HEADING "Product ID"
+COLUMN Quantity        FORMAT 9999                HEADING "Quantity"
+COLUMN TotalPrice      FORMAT $999,999,990.99     HEADING "Total Price"
+COLUMN Country         FORMAT A10		  HEADING "Country"
+COLUMN City            FORMAT A10                 HEADING "City"
+COLUMN Freight	       FORMAT $999,999,990.99     HEADING "Freight"
+
+
+TTITLE -
+CENTER 'Order Fulfillment Analysis Report for the Year' -
+SKIP 1 -
+CENTER ' &Input_Year' -
+RIGHT 'Date: ' _DATE -
+SKIP 1 RIGHT 'Page ' -
+FORMAT 999 SQL.PNO -
+SKIP 2
+BREAK ON REPORT
+COMPUTE SUM OF Freight ON REPORT;
+
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+-- Analyse order fulfilment
+SELECT
+    o.SHIPPERID AS "Shipper ID",
+    pd.PRODUCTID AS "Product ID",
+    o.QUANTITY AS "Quantity",
+    o.TOTALPRICE AS "Total Price",
+    c.Country AS "Country", 
+    c.City AS "State",
+    o.FREIGHT AS "Freight"
+FROM
+    order_FACTS o
+JOIN
+    date_dim od ON o.DATEKEY = od.DATEKEY
+JOIN
+    product_dim pd ON pd.PRODUCTKEY = o.PRODUCTKEY
+JOIN
+    customer_dim c ON c.CustomerKey = o.CustomerKey
+WHERE
+    od.CALYEAR = &Input_Year
+ORDER BY
+    o.SHIPPERID;
+
+-- Analyse order fulfilment
+WITH Freight_Summary AS (
+    SELECT
+        c.Country AS "Country",
+        SUM(o.FREIGHT) AS "Total Freight"
+    FROM
+        order_FACTS o
+    JOIN
+        date_dim od ON o.DATEKEY = od.DATEKEY
+    JOIN
+        customer_dim c ON c.CustomerKey = o.CustomerKey
+    WHERE
+        od.CALYEAR = &Input_Year
+    GROUP BY
+        c.Country
+)
+SELECT
+    "Country",
+    "Total Freight"
+FROM
+    Freight_Summary
+WHERE
+    "Total Freight" = (SELECT MAX("Total Freight") FROM Freight_Summary)
+    OR
+    "Total Freight" = (SELECT MIN("Total Freight") FROM Freight_Summary);
+
+-- Clearing the formatting options
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF

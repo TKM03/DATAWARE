@@ -1,0 +1,86 @@
+SET LINESIZE 150
+SET PAGESIZE 150
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+-- User Input for Year, Month, and Region
+ACCEPT v_cal_year_month CHAR DEFAULT '2023-05' PROMPT 'Enter Year-Month (YYYY-MM): '
+ACCEPT v_region CHAR DEFAULT 'USA' PROMPT 'Enter Region: '
+
+-- Extracting the Date from User Input
+COLUMN as_of_date NEW_VALUE as_of_date
+SELECT TO_DATE('&v_cal_year_month' || '-01', 'YYYY-MM-DD') AS as_of_date FROM dual;
+
+-- Profitability Analysis Report
+
+-- Title and Header Information
+TTITLE CENTER 'Profitability Analysis Report' SKIP 1 CENTER 'As of ' as_of_date RIGHT 'Page: ' SQL.PNO SKIP 2
+
+-- Setting up formatting options
+COLUMN ProductName HEADING "Product Name" FORMAT A20
+COLUMN CalYearMonth HEADING "Year-Month" FORMAT A10
+COLUMN Country HEADING "Country" FORMAT A10
+COLUMN TotalSales HEADING "Total Sales" FORMAT $999,999
+COLUMN TotalQuantitySold HEADING "Total|Quantity Sold" FORMAT 999,999
+COLUMN GrossProfit HEADING "Gross|Profit" FORMAT $999,999,999
+COLUMN ProfitRank HEADING "Profit|Rank" FORMAT 9999
+COLUMN DenseProfitRank HEADING "Dense Profit| Rank" FORMAT 9999
+COLUMN RowNumBySales HEADING "Row Num|by Sales" FORMAT 9999
+COLUMN PrevMonthSales HEADING "Prev Month| Sales" FORMAT $999,999,999
+COLUMN NextMonthSales HEADING "Next Month| Sales" FORMAT $999,999,999
+
+-- Define the Profitability View
+CREATE OR REPLACE VIEW ProfitabilityView AS
+WITH Profitability AS (
+    SELECT 
+        p.ProductName,
+        TO_CHAR(TO_DATE(d.CalYearMonth, 'YYYY-MM'), 'YYYY-MM') AS CalYearMonth,
+        c.Country,
+        SUM(o.TotalPrice) AS TotalSales,
+        SUM(o.Quantity) AS TotalQuantitySold,
+        SUM((o.TotalPrice - (p.UnitPrice * o.Quantity))) AS GrossProfit,
+        RANK() OVER (PARTITION BY c.Country, d.CalYearMonth ORDER BY SUM((o.TotalPrice - (p.UnitPrice * o.Quantity))) DESC) AS ProfitRank,
+        DENSE_RANK() OVER (PARTITION BY c.Country ORDER BY SUM((o.TotalPrice - (p.UnitPrice * o.Quantity))) DESC) AS DenseProfitRank,
+        ROW_NUMBER() OVER (PARTITION BY c.Country ORDER BY SUM(o.TotalPrice) DESC) AS RowNumBySales,
+        LAG(SUM(o.TotalPrice)) OVER (PARTITION BY p.ProductName, c.Country ORDER BY d.CalYearMonth) AS PrevMonthSales,
+        LEAD(SUM(o.TotalPrice)) OVER (PARTITION BY p.ProductName, c.Country ORDER BY d.CalYearMonth) AS NextMonthSales
+    FROM 
+        order_FACTS o
+    JOIN 
+        Product_dim p ON o.ProductKey = p.ProductKey
+    JOIN 
+        Date_dim d ON o.DateKey = d.DateKey
+    JOIN 
+        Customer_dim c ON o.CustomerKey = c.CustomerKey
+    WHERE 
+        c.Country = '&v_region'
+    GROUP BY 
+        p.ProductName, d.CalYearMonth, c.Country
+)
+SELECT 
+    ProductName,
+    CalYearMonth,
+    Country,
+    TotalSales,
+    TotalQuantitySold,
+    GrossProfit,
+    ProfitRank,
+    DenseProfitRank,
+    RowNumBySales,
+    PrevMonthSales,
+    NextMonthSales
+FROM 
+    Profitability
+ORDER BY 
+    Country, CalYearMonth, ProfitRank;
+
+-- Querying the view
+SELECT *
+FROM ProfitabilityView
+WHERE CalYearMonth = '&v_cal_year_month'
+ORDER BY ProfitRank;
+
+-- Clearing Formatting
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF;

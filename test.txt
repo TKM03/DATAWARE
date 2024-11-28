@@ -1,0 +1,19 @@
+
+
+SELECT COUNT(*) FROM
+(SELECT
+        dd.CalYearMonth AS "Year-Month",
+        c.ContactName AS "Customer Name",
+        SUM(f.TotalPrice) AS Monthly_Sales,
+        SUM(SUM(f.TotalPrice)) OVER (PARTITION BY c.ContactName, dd.CalYear) AS Total_Sales,
+        LAG(SUM(f.TotalPrice)) OVER (PARTITION BY c.ContactName ORDER BY dd.CalYear, dd.CalMonthNoInYear) AS Previous_Month_Sales
+    FROM
+        order_FACTS f
+        JOIN Date_dim dd ON f.DateKey = dd.DateKey
+        JOIN Customer_dim c ON f.CustomerKey = c.CustomerKey
+    
+    GROUP BY
+        dd.CalYearMonth,
+        c.ContactName,
+        dd.CalMonthNoInYear,
+        dd.CalYear);

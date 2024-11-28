@@ -1,0 +1,146 @@
+set linesize 105;
+set pagesize 100;
+
+ALTER SESSION SET NLS_DATE_FORMAT = 'dd-MON-YYYY';
+
+ACCEPT Input_ID NUMBER PROMPT 'Enter the Product ID: '
+CHAR FORMAT A02 PROMPT
+COLUMN prodname NEW_VALUE prodname
+
+SET TERMOUT OFF
+SELECT MAX(productname) AS prodname FROM currentorder;
+SET TERMOUT ON
+
+COLUMN Label          FORMAT               HEADING "Label";
+COLUMN Price          FORMAT $9999.99      HEADING "Price";
+COLUMN NoOrder        FORMAT 9999          HEADING "No. of Orders";
+COLUMN TotalPrice     FORMAT $999,999.99   HEADING "Total Sales";
+COLUMN TotalQuantity  FORMAT 9999          HEADING "Quantity Sold";
+COLUMN AvgTotalPrice  FORMAT $999,999.99   HEADING "Avg. Sales w/o Discount";
+COLUMN AvgQuantity    FORMAT 99999         HEADING "Avg. Quantity";
+
+TTITLE - CENTER 'Compare Sales Amount Based on' -
+SKIP 1 -
+CENTER 'Current Price and Previous Price For Product:' -
+SKIP 1 -
+CENTER prodname -
+SKIP 1 -
+RIGHT 'DATE: ' _DATE -
+SKIP 1 -
+RIGHT 'Page ' FORMAT 999 SQL.PNO -
+SKIP 2
+REPFOOTER SKIP 1 CENTER '---END OF REPORT---'
+
+
+CREATE OR REPLACE VIEW PriceChanges AS 
+SELECT
+    p.ProductID,
+    (
+        SELECT EffectiveStartDate
+        FROM Product_dim pd
+        WHERE pd.ProductID = p.ProductID
+        AND pd.EffectiveEndDate = (
+            SELECT MAX(pp.EffectiveEndDate)
+            FROM Product_dim pp
+            WHERE pp.ProductID = p.ProductID
+            AND pp.EffectiveEndDate < p.EffectiveStartDate
+        )
+    ) AS PreviousEffectiveStartDate,
+    p.EffectiveStartDate,
+    (
+        SELECT UnitPrice
+        FROM Product_dim pd
+        WHERE pd.ProductID = p.ProductID
+        AND pd.EffectiveEndDate = (
+            SELECT MAX(pp.EffectiveEndDate)
+            FROM Product_dim pp
+            WHERE pp.ProductID = p.ProductID
+            AND pp.EffectiveEndDate < p.EffectiveStartDate
+        )
+    ) AS PreviousPrice,
+    p.UnitPrice AS NewPrice
+FROM
+    Product_dim p
+WHERE
+    p.IsCurrent = 'Y'
+AND
+    p.productid = &Input_ID
+ORDER BY
+    p.ProductID;
+
+--Current
+CREATE OR REPLACE VIEW CurrentOrder AS 
+Select
+    p.productid as productid,
+    p.productname as productname,
+    o.OrderID AS CurrentOrderID,
+    o.DateKey AS CurrentDateKey,
+    o.ProductKey AS CurrentProductKey,
+    o.Quantity AS CurrentQuantity,
+    o.Discount AS CurrentDiscount,
+    o.TotalPrice AS CurrentTotalPrice,
+    p.ProductID AS CurrentProductID,
+    p.ProductName AS CurrentProductName
+FROM
+    order_facts o
+JOIN
+    Product_dim p ON o.ProductKey = p.ProductKey
+JOIN
+    PriceChanges pc ON p.ProductID = pc.ProductID
+WHERE
+    pc.EffectiveStartDate = p.EffectiveStartDate
+    AND p.ProductID = &Input_ID
+    AND p.IsCurrent = 'Y';
+
+CREATE OR REPLACE VIEW PreviousOrder AS
+SELECT
+    o.OrderID AS PreviousOrderID,
+    o.DateKey AS PreviousDateKey,
+    o.ProductKey AS PreviousProductKey,
+    o.Quantity AS PreviousQuantity,
+    o.Discount AS PreviousDiscount,
+    o.TotalPrice AS PreviousTotalPrice,
+    p.ProductID AS PreviousProductID,
+    p.ProductName AS PreviousProductName
+FROM
+    order_facts o
+JOIN
+    Product_dim p ON o.ProductKey = p.ProductKey
+JOIN
+    PriceChanges pc ON p.ProductID = pc.ProductID
+WHERE
+    pc.PreviousEffectiveStartDate = p.EffectiveStartDate
+    AND p.ProductID = &Input_ID;
+
+create or replace view productname as
+    Select MAX(productname) as prodname from currentorder;
+
+create or replace view pricecompare as
+SELECT
+    'Previous' as label,
+    (select count(*) from previousorder) as NoOrder,
+    (select previousprice from pricechanges) as Price,
+    (SELECT SUM(PreviousTotalPrice) FROM PreviousOrder) AS TotalPrice,
+    (SELECT SUM(PreviousQuantity) FROM PreviousOrder) AS TotalQuantity,
+    (SELECT SUM(PreviousQuantity) FROM PreviousOrder)/(SELECT COUNT(*) FROM PreviousOrder) AS AvgQuantity,
+    (SELECT previousprice From PriceChanges)*(SELECT SUM(PreviousQuantity) FROM PreviousOrder)/(SELECT COUNT(*) FROM PreviousORder) AS AvgTotalPrice
+FROM 
+    dual
+UNION ALL
+SELECT
+    'Current' as label,
+    (select count(*) from CurrentOrder) as NoOrder,
+    (select Newprice from PriceChanges) as price,
+    (SELECT SUM(CurrentTotalPrice) FROM CurrentOrder) AS TotalPrice,
+    (SELECT SUM(CurrentQuantity) FROM CurrentOrder) AS TotalQuantity,
+    (SELECT SUM(CurrentQuantity) FROM CurrentOrder)/(SELECT COUNT(*) FROM CurrentOrder) AS AvgQuantity,
+    (SELECT NewPrice FROM PriceChanges)*(SELECT SUM(CurrentQuantity) FROM CurrentOrder)/(SELECT COUNT(*) FROM CurrentOrder) AS AvgTotalPrice
+FROM
+    dual;
+
+
+select * from pricecompare;
+CLEAR COLUMNS
+CLEAR BREAKS
+CLEAR COMPUTES
+TTITLE OFF
